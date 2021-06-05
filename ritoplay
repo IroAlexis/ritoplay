@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+if [  ]; then
+  echo "usage: ritoplay lol|lor|val install|start|stop"
+  exit 1
+fi
+
+#switch $1
+
+exit 0
