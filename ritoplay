@@ -1,10 +1,339 @@
 #!/usr/bin/env bash
 
-if [  ]; then
-  echo "usage: ritoplay lol|lor|val install|start|stop"
+if [ "$DEBUG" = 1 ]; then
+  set -x
+fi
+
+bin="$(basename "${BASH_SOURCE[0]}")"
+where="$(dirname "$(which "${BASH_SOURCE[0]}")")"
+
+if [ "$#" -ne 1 ]; then
+  echo "usage: $bin lol|lor"
   exit 1
 fi
 
-#switch $1
+if [[ "$1" =~ -h ]] || [[ "$1" =~ --help ]]; then
+  echo "usage: $bin lol|lor"
+  exit 1
+fi
+
+
+# ===========
+#  Functions
+# ===========
+
+msg()
+{
+  echo -e "[+] info:: $1" >&2
+}
+
+error()
+{
+  echo -e "[-] err:: $1" >&2
+}
+
+warn()
+{
+  echo -e "[-] warn:: $1" >&2
+}
+
+update_winepfx()
+{
+  if [ -z "$WINEDLLOVERRIDES" ]; then
+    export WINEDLLOVERRIDES="mscoree,mshtml,winemenubuilder.exe="
+  else
+    OLD=$WINEDLLOVERRIDES
+    WINEDLLOVERRIDES="mscoree,mshtml,winemenubuilder.exe="
+  fi
+
+  $wineboot &> /dev/null
+  rslt=$?
+  wineserver -w
+
+  WINEDLLOVERRIDES="$OLD"
+  unset OLD
+
+  return $rslt
+}
+
+display_runtime_options()
+{
+  if [ -n "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" -gt 0 ]] ; then
+    echo "==========================================="
+    msg "version: $($wine --version)"
+    msg "command: $GAME_EXE"
+  fi
+
+  type="runtime_option:"
+  msg "$type PATH=$PATH"
+  msg "$type LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+
+  ENV_WINE=$(env | grep -e "WINE\|DXVK")
+  for var in $ENV_WINE; do
+    msg "$type $var"
+  done
+
+  if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]] ; then
+    echo "==========================================="
+  fi
+}
+
+
+# https://github.com/kyechou/leagueoflegends
+# https://www.reddit.com/r/leagueoflinux/comments/j07yrg/starting_the_client_script/
+port_waiting_daemon() {
+  # Find PID
+  process=LeagueClientUx.exe
+  uxpid=$(timeout 4m sh -c "until pidof ${process}; do sleep 1; done")
+  if [ -z "$uxpid" ]; then
+    exit 1
+  fi
+
+  # Get the app-port parameter
+  port=$(xargs -0 <"/proc/${uxpid}/cmdline" | sed -n 's/.*--app-port=\([[:digit:]]*\).*/\1/p')
+  if [ -z "$port" ]; then
+    exit 1
+  fi
+
+  # Suspend the league client until app-port gets available
+  kill -STOP ${uxpid}
+  timeout 5m bash -c "
+  until openssl s_client -connect :${port} <<< Q >/dev/null 2>&1; do
+    sleep 1
+  done"
+  kill -CONT ${uxpid}
+}
+
+
+# ========================================
+#  RitoPlay configuration Verification
+# ========================================
+
+if ! command -v source 1> /dev/null; then
+  msg "Install 'tcl' with your package manager"
+  exit 1
+fi
+
+if [[ "$where" =~ ^\/+usr\/+bin\/*.* ]] && [ -f "$HOME/.config/ritoplay/customization.cfg" ]; then
+  source "$HOME"/.config/ritoplay/customization.cfg 2> /dev/null
+  msg "config: $HOME/.config/ritoplay/customization.cfg"
+elif [[ "$where" != ^\/+usr\/+bin\/*.* ]] && [ -f "$where/customization.cfg" ]; then
+  source "$where"/customization.cfg 2> /dev/null
+  msg "config: $where/customization.cfg"
+elif [[ "$where" =~ ^\/+usr\/+bin\/*.* ]] && [ -f "/etc/ritoplay/customization.cfg" ]; then
+  source /etc/ritoplay/customization.cfg 2> /dev/null
+  msg "config: /etc/ritoplay/customization.cfg"
+else
+  msg "cfg: No such 'customization.cfg' file"
+  if [ -z "$GAME_DIR" ]; then
+    msg "Use the variable 'GAME_DIR=/home/frog'"
+  fi
+
+  if [ -z "$WINE_CUSTOM" ]; then
+    if ! command -v wine 1> /dev/null; then
+      msg "Use the variable 'WINE_CUSTOM=/path/to/wine'"
+      msg "Or install Wine with your package manager"
+
+      if [ -z "$GAME_DIR" ]; then
+        exit 1
+      fi
+    fi
+  fi
+fi
+
+if [ -z "$GAME_DIR" ] && [ -n "$_game_dir" ]; then
+  GAME_DIR="$_game_dir"
+fi
+msg "game_directory: $GAME_DIR"
+
+
+# ====================
+#  Wine Configuration
+# ====================
+
+if [ -z "$_wine_custom" ] && [ -z "$WINE_CUSTOM" ]; then
+  WINE_SYSTEM=1
+fi
+
+if [ "$WINE_SYSTEM" != 1 ]; then
+  if [ -n "$WINE_CUSTOM" ] && [ -d "$WINE_CUSTOM" ]; then
+    WINE="$WINE_CUSTOM"
+  elif [ -n "$_wine_custom" ] && [ -d "$_wine_custom" ]; then
+    WINE="$_wine_custom"
+  fi
+
+  if [ -n "$WINE" ]; then
+    if [ -z "$PATH" ]; then
+      PATH="$WINE/bin"
+    else
+      PATH="$WINE/bin:$PATH"
+    fi
+    if [ -z "$LD_LIBRARY_PATH" ]; then
+      LD_LIBRARY_PATH="$WINE/lib64:$WINE/lib32:$WINE/lib"
+    else
+      LD_LIBRARY_PATH="$WINE/lib64:$WINE/lib32:$WINE/lib:$LD_LIBRARY_PATH"
+    fi
+  fi
+fi
+
+# See setup_dxvk.sh in DXVK projet
+wine="wine"
+wine64="wine64"
+wineboot="wineboot"
+
+wine_path=$(dirname "$(command -v $wineboot)")
+wow64=true
+
+if ! [ -f "$wine_path/$wine" ]; then
+  wine=$wine64
+  wow64=false
+fi
+
+msg "version: $($wine --version)"
+
+# Don't override WINEPREFIX if the user passed one, otherwise we set ours
+if [ -z "$WINEPREFIX" ]; then
+  export WINEPREFIX="$GAME_DIR/pfx"
+fi
+
+msg "pfx: $WINEPREFIX"
+if ! [ -d "$WINEPREFIX" ]; then
+  warn "pfx: Need to recreate prefix"
+fi
+
+
+if [ "$RITOPLAY_LOG" = 0 ]; then
+  if [ -z "$WINEDEBUG" ]; then
+    export WINEDEBUG=fixme-all
+  fi
+elif [ "$RITOPLAY_LOG" = 1 ]; then
+  if [ -z "$WINEDEBUG" ]; then
+    export WINEDEBUG=warn+seh
+  fi
+elif [ "$RITOPLAY_LOG" = 2 ]; then
+  if [ -z "$WINEDEBUG" ]; then
+    export WINEDEBUG=+timestamp,+pid,+tid,+seh,+debugstr,+loaddll,+mscoree
+  fi
+else
+  if [ -z "$WINEDEBUG" ]; then
+    export WINEDEBUG=-all
+  fi
+fi
+
+if [[ ! "$_no_confirm" =~ true ]]; then
+  read -p "Press enter to continue. "
+fi
+
+
+# ====================
+#  Wine prefix Update
+# ====================
+
+case "$1" in
+  lol)
+    msg "Preparing to launch League of Legends..."
+    ;;
+  lor)
+    msg "Preparing to launch Legends of Runeterra..."
+    ;;
+  *)
+    msg "Preparing to launch the game..."
+    ;;
+esac
+update_winepfx
+
+if [ "$?" = 1 ]; then
+  error "Problem Wine prefix update"
+  exit 1
+fi
+
+if [ -z "$WINEDLLOVERRIDES" ]; then
+  export WINEDLLOVERRIDES="winemenubuilder.exe="
+fi
+
+export WINEFSYNC=1
+
+
+# ====================
+#  DXVK Configuration
+# ====================
+
+if [ "$RITOPLAY_USE_WINED3D" != 1 ]; then
+  if [[ "$RITOPLAY_LOG" > 0 ]]; then
+    export DXVK_LOG_LEVEL=info
+  else
+    export DXVK_LOG_LEVEL=none
+  fi
+
+  mkdir -p "$GAME_DIR"/shadercache/dxvk_state_cache
+  export DXVK_STATE_CACHE_PATH="$GAME_DIR"/shadercache/dxvk_state_cache
+fi
+
+
+# ======================
+#  Driver Configuration
+# ======================
+
+export $(cat /sys/class/drm/card0/device/uevent | grep -e "DRIVER")
+case "$DRIVER" in
+  nvidia)
+    if [ -d /proc/driver/nvidia ]; then
+      export __GL_SHADER_DISK_CACHE_SKIP_CLEANUP=1
+      export __GL_SHADER_DISK_CACHE=1
+      export __GL_SHADER_DISK_CACHE_PATH="$GAME_DIR/shadercache/$DRIVER"
+    fi
+    ;;
+  amdgpu)
+    export MESA_GLSL_CACHE_DIR="$GAME_DIR/shadercache/$DRIVER"
+    ;;
+  *)
+    msg "driver: '$DRIVER' driver configuration is not supported..."
+    ;;
+esac
+
+
+# =============
+#  Game Launch
+# =============
+
+if [ -d "$WINEPREFIX/drive_c/Riot Games/Riot Client/" ]; then
+  cd "$WINEPREFIX/drive_c/Riot Games/Riot Client/"
+else
+  msg "Riot Client is not installed..."
+  exit 1
+fi
+
+if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]]; then
+  log=$HOME/ritoplay-$1.log
+  display_runtime_options &> $log
+fi
+
+msg "Starting..."
+
+case $1 in
+  "lol")
+    ( port_waiting_daemon ) &
+    msg "Don't forget 'echo 0 > /proc/sys/abi/vsyscall32'"
+    if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]] ; then
+      $wine RiotClientServices.exe --launch-product=league_of_legends --launch-patchline=live &>> $log
+    else
+      $wine RiotClientServices.exe --launch-product=league_of_legends --launch-patchline=live
+    fi
+    ;;
+  "lor")
+    if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]] ; then
+      $wine RiotClientServices.exe --launch-product=bacon --launch-patchline=live &>> $log
+    else
+      $wine RiotClientServices.exe --launch-product=bacon --launch-patchline=live
+    fi
+    ;;
+esac
+
+msg "Waiting all wine processes terminate..."
+wineserver --wait
+
+if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]] ; then
+  msg "Debug log available here $log"
+fi
 
 exit 0
