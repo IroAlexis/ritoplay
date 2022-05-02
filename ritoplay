@@ -310,26 +310,12 @@ fi
 
 msg "Starting..."
 
-case $1 in
-  "lol")
-    ( port_waiting_daemon ) &
-    msg "Don't forget 'echo 0 > /proc/sys/abi/vsyscall32'"
-    if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]] ; then
-      $wine RiotClientServices.exe --launch-product=league_of_legends --launch-patchline=live &>> $log
-    else
-      $wine RiotClientServices.exe --launch-product=league_of_legends --launch-patchline=live
-    fi
-    ;;
-  "lor")
-    if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]] ; then
-      $wine RiotClientServices.exe --launch-product=bacon --launch-patchline=live &>> $log
-    else
-      $wine RiotClientServices.exe --launch-product=bacon --launch-patchline=live
-    fi
-    ;;
-esac
-
-msg "Waiting all wine processes terminate..."
+msg "Don't forget 'echo 0 > /proc/sys/abi/vsyscall32'"
+if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]] ; then
+  $wine RiotClientServices.exe &>> $log
+else
+  $wine RiotClientServices.exe
+fi
 wineserver --wait
 
 if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]] ; then
