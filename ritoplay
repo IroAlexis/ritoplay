@@ -7,17 +7,6 @@ fi
 bin="$(basename "${BASH_SOURCE[0]}")"
 where="$(dirname "$(which "${BASH_SOURCE[0]}")")"
 
-if [ "$#" -ne 1 ]; then
-  echo "usage: $bin lol|lor"
-  exit 1
-fi
-
-if [[ "$1" =~ -h ]] || [[ "$1" =~ --help ]]; then
-  echo "usage: $bin lol|lor"
-  exit 1
-fi
-
-
 # ===========
 #  Functions
 # ===========
@@ -229,17 +218,7 @@ fi
 #  Wine prefix Update
 # ====================
 
-case "$1" in
-  lol)
-    msg "Preparing to launch League of Legends..."
-    ;;
-  lor)
-    msg "Preparing to launch Legends of Runeterra..."
-    ;;
-  *)
-    msg "Preparing to launch the game..."
-    ;;
-esac
+msg "Preparing to launch the game..."
 update_winepfx
 
 if [ "$?" = 1 ]; then
