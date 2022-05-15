@@ -13,17 +13,17 @@ where="$(dirname "$(which "${BASH_SOURCE[0]}")")"
 
 msg()
 {
-  echo -e "[+] info:: $1" >&2
+  echo -e "> info:: $1" >&2
 }
 
 error()
 {
-  echo -e "[-] err:: $1" >&2
+  echo -e "> err:: $1" >&2
 }
 
 warn()
 {
-  echo -e "[-] warn:: $1" >&2
+  echo -e "> warn:: $1" >&2
 }
 
 update_winepfx()
@@ -65,32 +65,6 @@ display_runtime_options()
   if [ ! -z "$RITOPLAY_LOG" ] && [[ "$RITOPLAY_LOG" > 0 ]] ; then
     echo "==========================================="
   fi
-}
-
-
-# https://github.com/kyechou/leagueoflegends
-# https://www.reddit.com/r/leagueoflinux/comments/j07yrg/starting_the_client_script/
-port_waiting_daemon() {
-  # Find PID
-  process=LeagueClientUx.exe
-  uxpid=$(timeout 4m sh -c "until pidof ${process}; do sleep 1; done")
-  if [ -z "$uxpid" ]; then
-    exit 1
-  fi
-
-  # Get the app-port parameter
-  port=$(xargs -0 <"/proc/${uxpid}/cmdline" | sed -n 's/.*--app-port=\([[:digit:]]*\).*/\1/p')
-  if [ -z "$port" ]; then
-    exit 1
-  fi
-
-  # Suspend the league client until app-port gets available
-  kill -STOP ${uxpid}
-  timeout 5m bash -c "
-  until openssl s_client -connect :${port} <<< Q >/dev/null 2>&1; do
-    sleep 1
-  done"
-  kill -CONT ${uxpid}
 }
 
 
@@ -218,7 +192,7 @@ fi
 #  Wine prefix Update
 # ====================
 
-msg "Preparing to launch the game..."
+msg "Preparing to launch Riot Client..."
 update_winepfx
 
 if [ "$?" = 1 ]; then
@@ -231,6 +205,7 @@ if [ -z "$WINEDLLOVERRIDES" ]; then
 fi
 
 export WINEFSYNC=1
+export WINEESYNC=1
 
 
 # ====================
