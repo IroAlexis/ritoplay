@@ -6,4 +6,4 @@ This is a first draft that allows me to have an overview for the Wine use and wh
 
 ## Supported games
 * League of Legends/Teamfight Tactics
-* Legends of Runeterra
+* ~~Legends of Runeterra~~
