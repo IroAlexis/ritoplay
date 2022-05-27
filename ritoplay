@@ -240,7 +240,7 @@ case "$DRIVER" in
     fi
     ;;
   amdgpu)
-    export MESA_GLSL_CACHE_DIR="$GAME_DIR/shadercache/$DRIVER"
+    export MESA_SHADER_CACHE_DIR="$GAME_DIR/shadercache/$DRIVER"
     ;;
   *)
     msg "driver: '$DRIVER' driver configuration is not supported..."
